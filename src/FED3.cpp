@@ -272,6 +272,172 @@ void FED3::Feed(int pulse, bool pixelsoff) {
   } while (PelletAvailable == false);
 }
 
+//allowing social pokes and free feeding occurs at the same time
+void FED3::Social_Feed(int minPokeTime, int pulse, bool pixelsoff) {
+  //Run this loop repeatedly until statement below is false
+  bool pelletDispensed = false;
+  
+  do {	
+	
+    if (pelletDispensed == false) {
+	    pelletDispensed = RotateDisk(-300);
+    }
+
+    if (pixelsoff==true){
+      pixelsOff();
+    }
+    
+    //If pellet is detected during or after this motion
+    if (pelletDispensed == true) {    
+      ReleaseMotor ();
+      pelletTime = millis();
+      
+      display.fillCircle(25, 99, 5, BLACK);
+      display.refresh();
+      retInterval = (millis() - pelletTime);
+      //while pellet is present and under 60s has elapsed
+      while (digitalRead (PELLET_WELL) == LOW and retInterval < 60000) {  //After pellet is detected, hang here for up to 1 minute to detect when it is removed
+        retInterval = (millis() - pelletTime);
+        DisplayRetrievalInt();
+
+	if (fed3.Left) {       //If left poke is triggered
+      	  fed3.logLeftPoke();  //Log left poke
+	  if (fed3.leftInterval < (minPokeTime)) {
+            fed3.Click();
+          } else {
+            fed3.ConditionedStimulus();  //Deliver conditioned stimulus (tone and lights)
+            fed3.BNC(500, 1);            //open door
+            fed3.Timeout(15);
+          }
+        }
+
+        if (fed3.Right) {  //If right poke is triggered
+          fed3.logRightPoke();
+          if (fed3.leftInterval >= (minPokeTime)) {
+            fed3.Click();
+          }
+        }
+        // //Log pokes while pellet is present 
+        // if (digitalRead(LEFT_POKE) == LOW) {             //If left poke is triggered
+        //   leftPokeTime = millis();
+        //   if (countAllPokes) LeftCount ++;
+        //   leftInterval = 0.0;
+        //   while (digitalRead (LEFT_POKE) == LOW) {}  //Hang here until poke is clear
+        //   leftInterval = (millis()-leftPokeTime);
+        //   UpdateDisplay();
+        //   Event = "LeftWithPellet";
+
+        //   logdata();
+        //   }
+
+        // if (digitalRead(RIGHT_POKE) == LOW) {            //If right poke is triggered
+        //   rightPokeTime = millis();
+        //   RightCount ++;
+        //    rightInterval = 0.0;
+        //   while (digitalRead (RIGHT_POKE) == LOW) {}  //Hang here until poke is clear
+        //   rightInterval = (millis()-rightPokeTime);
+        //   UpdateDisplay();
+        //   Event = "RightWithPellet";
+
+        //   logdata();
+        //   }
+        } 
+      
+      //after 60s has elapsed
+      while (digitalRead (PELLET_WELL) == LOW) { //if pellet is not taken after 60 seconds, wait here and go to sleep
+        run();
+	if (fed3.Left) {       //If left poke is triggered
+      	  fed3.logLeftPoke();  //Log left poke
+	  if (fed3.leftInterval < (minPokeTime)) {
+            fed3.Click();
+          } else {
+            fed3.ConditionedStimulus();  //Deliver conditioned stimulus (tone and lights)
+            fed3.BNC(500, 1);            //open door
+            fed3.Timeout(15);
+          }
+        }
+
+        if (fed3.Right) {  //If right poke is triggered
+          fed3.logRightPoke();
+          if (fed3.leftInterval >= (minPokeTime)) {
+            fed3.Click();
+          }
+        }
+        // //Log pokes while pellet is present 
+        // if (digitalRead(LEFT_POKE) == LOW) {             //If left poke is triggered
+        //   leftPokeTime = millis();
+        //   if (countAllPokes) LeftCount ++;
+        //   leftInterval = 0.0;
+        //   while (digitalRead (LEFT_POKE) == LOW) {}  //Hang here until poke is clear
+        //   leftInterval = (millis()-leftPokeTime);
+        //   UpdateDisplay();
+        //   Event = "LeftWithPellet";
+
+        //   logdata();
+        //   }
+
+        // if (digitalRead(RIGHT_POKE) == LOW) {            //If right poke is triggered
+        //   rightPokeTime = millis();
+        //   if (countAllPokes) RightCount ++;
+        //    rightInterval = 0.0;
+        //   while (digitalRead (RIGHT_POKE) == LOW) {}  //Hang here until poke is clear
+        //   rightInterval = (millis()-rightPokeTime);
+        //   UpdateDisplay();
+        //   Event = "RightWithPellet";
+
+        //   logdata();
+        //   }
+      }
+
+      ReleaseMotor ();
+      PelletCount++;
+      
+      // If pulse duration is specified, send pulse from BNC port      
+      if (pulse > 0){
+        BNC (pulse, 1);  
+      }
+      
+      Left = false;
+      Right = false;
+      Event = "Pellet";
+      
+      //calculate IntetPelletInterval
+      DateTime now = rtc.now();
+      interPelletInterval = now.unixtime() - lastPellet;  //calculate time in seconds since last pellet logged
+      lastPellet  = now.unixtime();
+
+      logdata();
+      numMotorTurns = 0; //reset numMotorTurns
+      PelletAvailable = true;
+      UpdateDisplay();
+      
+      break;
+    }
+
+    if (PelletAvailable == false){
+        pelletDispensed = dispenseTimer_ms(1500);  //delay between pellets that also checks pellet well
+        numMotorTurns++;
+
+        //Jam clearing movements
+        if (pelletDispensed == false) {
+          if (numMotorTurns % 5 == 0) {
+            pelletDispensed = MinorJam();
+          }
+	   }
+        if (pelletDispensed == false) {
+          if (numMotorTurns % 10 == 0 and numMotorTurns % 20 != 0) {
+            pelletDispensed = VibrateJam();
+          }
+	   }
+        if (pelletDispensed == false) {
+          if (numMotorTurns % 20 == 0) {
+            pelletDispensed = ClearJam();
+          }
+        }
+    }
+  } while (PelletAvailable == false);
+}
+
 //minor movement to clear jam
 bool FED3::MinorJam(){
 	return RotateDisk(100);
